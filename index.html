@@ -274,6 +274,7 @@ input[type=text]{padding:8px 11px;font-family:'ui-monospace','SF Mono',Menlo,mon
   .fld-row-hdr{background:#2C2C2C!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .fld-row-total{background:#2C2C2C!important;border-top:2px solid #7EB89A!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .fld-row-alt{background:#e8f4ed!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .fld-breakdown{display:none!important;}
 }
 @media(max-width:420px){
   .dg,.hg{grid-template-columns:repeat(2,1fr);}
@@ -656,6 +657,35 @@ function lsGet(k,d){try{const v=localStorage.getItem(k);return v!=null?JSON.pars
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 function getClients(){const s=lsGet(STORE_CLIENTS,null);if(s&&s.length)return s;lsSet(STORE_CLIENTS,DEFAULT_CLIENTS);return DEFAULT_CLIENTS;}
 function saveClients(c){lsSet(STORE_CLIENTS,c);}
+
+// ── Google Sheets sync ────────────────────────────────────────────
+const SHEET_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vRNHy5Xwqc10lKC4DMgI8_4hv-4qbOakyVIF7b9AXAQMpolpPQQNdHkQ1qAHapEvO8M9lYdH7YHOKdI/pub?gid=0&single=true&output=csv";
+const STORE_SHEET_ETAG="alc_sheet_etag_v1";
+
+function syncClientsFromSheet(){
+  fetch("https://corsproxy.io/?"+encodeURIComponent(SHEET_URL),{cache:"no-cache"})
+    .then(r=>r.text())
+    .then(csv=>{
+      const lines=csv.trim().split("\n").slice(1); // skip header
+      const clients=lines.map(line=>{
+        // Handle quoted fields (names with commas)
+        const parts=line.match(/(".*?"|[^,]+)(?:,|$)/g)||[];
+        const clean=parts.map(p=>p.replace(/,$/,"").replace(/^"|"$/g,"").trim());
+        return{n:clean[0],s:parseInt(clean[1])||0,t:clean[2]||"GR"};
+      }).filter(c=>c.n&&c.s>0);
+      if(clients.length>0){
+        saveClients(clients);
+        // Refresh any open views
+        try{renderClientManager(document.getElementById("cl-srch")?.value||"");}catch(e){}
+        try{renderTkClients(document.getElementById("tk-srch")?.value||"");}catch(e){}
+        try{renderGClients(document.getElementById("g-srch")?.value||"");}catch(e){}
+        try{updateClientCount();}catch(e){}
+try{syncClientsFromSheet();}catch(e){}
+        console.log("Clients synced from Google Sheets: "+clients.length);
+      }
+    })
+    .catch(e=>console.log("Sheet sync unavailable (offline?): "+e.message));
+}
 function sortedClients(){return getClients().slice().sort((a,b)=>a.n.localeCompare(b.n));}
 function show(id){
   document.querySelectorAll(".pane").forEach(p=>p.classList.remove("active"));
@@ -908,6 +938,7 @@ function renderFieldSheet(){
 
     // Breakdown sub-rows
     const breakdown=document.createElement("div");
+    breakdown.className="fld-breakdown";
     breakdown.style.cssText="padding:0 18px 10px 18px;border-bottom:1px solid var(--line);"+rowBg;
     let bhtml='<div style="display:flex;flex-wrap:wrap;gap:6px 16px;padding-top:2px">';
     prodBreakdown.forEach(p=>{
@@ -1047,6 +1078,7 @@ function renderGranFieldSheet(){
     // If both feed and seed, show breakdown
     if(gFeed&&fr>0&&gSeed&&sr>0){
       const breakdown=document.createElement("div");
+      breakdown.className="fld-breakdown";
       breakdown.style.cssText="padding:0 18px 10px 18px;border-bottom:1px solid var(--line);"+rowBg;
       breakdown.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:6px 16px;padding-top:2px">
         <div style="display:flex;align-items:baseline;gap:5px"><span style="font-family:'ui-monospace','SF Mono',Menlo,monospace;font-size:13px;font-weight:700;color:var(--sage-d)">${cFeed.toFixed(2)}kg</span><span style="font-size:11px;font-weight:500;color:var(--carbon)">Feed</span></div>
@@ -1147,6 +1179,7 @@ try{renderGClients("");}catch(e){}
 try{gCalc();tkCalc();}catch(e){}
 try{initPay();payCalc();}catch(e){}
 try{updateClientCount();}catch(e){}
+try{syncClientsFromSheet();}catch(e){}
 
 // ═══ STOCK TRACKER ═══════════════════════════════════════════════
 const STORE_STOCK_PRODS = "alc_stock_prods_v1";
