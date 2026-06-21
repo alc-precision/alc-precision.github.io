@@ -483,6 +483,10 @@ input[type=text]{padding:8px 11px;font-family:'ui-monospace','SF Mono',Menlo,mon
           <div class="tft"><div class="tfi" id="tk-fb" style="width:0%;background:var(--sage)"></div></div>
           <div style="font-size:8px;color:rgba(255,255,255,.22);margin-top:3px" id="tk-fn"></div>
         </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);">
+          <span style="font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4)">Est. product cost</span>
+          <span style="font-family:'ui-monospace','SF Mono',Menlo,monospace;font-size:16px;font-weight:600;color:var(--sage-l)" id="tk-cost">—</span>
+        </div>
       </div>
       <div class="card"><div class="ct">Today's clients — tick to select</div>
         <input class="srch" id="tk-srch" type="text" placeholder="Search clients…" oninput="tkSearch(this.value)">
@@ -539,6 +543,10 @@ input[type=text]{padding:8px 11px;font-family:'ui-monospace','SF Mono',Menlo,mon
           <div><div style="font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:2px">Total seed</div><div style="font-family:Cormorant Garamond,serif;font-size:42px;color:rgba(255,255,255,.45);line-height:1" id="g-ts">0 kg</div></div>
         </div>
         <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:9px;font-size:9px;color:rgba(255,255,255,.28)" id="g-det"></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);">
+          <span style="font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4)">Est. product cost</span>
+          <span style="font-family:'ui-monospace','SF Mono',Menlo,monospace;font-size:16px;font-weight:600;color:var(--sage-l)" id="g-cost">—</span>
+        </div>
       </div>
       <div class="card"><div class="ct">Today's clients — tick to select</div>
         <input class="srch" id="g-srch" type="text" placeholder="Search clients…" oninput="gSearch(this.value)">
@@ -598,7 +606,7 @@ input[type=text]{padding:8px 11px;font-family:'ui-monospace','SF Mono',Menlo,mon
 
 <!-- CLIENTS MANAGER -->
 <div class="pane" id="pane-clients">
-  <div class="ph"><div class="ph-row"><div style="display:flex;align-items:center;gap:10px;"><h2>Client List</h2><span id="cl-count-badge" style="font-family:'ui-monospace','SF Mono',Menlo,monospace;font-size:11px;font-weight:700;background:var(--sage);color:#fff;padding:2px 9px;border-radius:12px;">0</span></div><button class="hbtn" onclick="show('home')">⌂ Home</button></div><p id="cl-count-hdr">Shared by Tank Mix &amp; Granular · stored on this device</p></div>
+  <div class="ph"><div class="ph-row"><div style="display:flex;align-items:center;gap:10px;"><h2>Client List</h2><span id="cl-count-badge" style="font-family:'ui-monospace','SF Mono',Menlo,monospace;font-size:11px;font-weight:700;background:var(--sage);color:#fff;padding:2px 9px;border-radius:12px;">0</span></div><button class="hbtn" onclick="syncClientsFromSheet(true)">↻ Sync</button><button class="hbtn" onclick="show('home')">⌂ Home</button></div><p id="cl-count-hdr">Shared by Tank Mix &amp; Granular · stored on this device</p><p id="sync-status" style="display:block!important;font-size:9px;color:var(--mid);margin-top:3px;"></p></div>
   <div class="pb">
     <div class="card">
       <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
@@ -659,33 +667,67 @@ function getClients(){const s=lsGet(STORE_CLIENTS,null);if(s&&s.length)return s;
 function saveClients(c){lsSet(STORE_CLIENTS,c);}
 
 // ── Google Sheets sync ────────────────────────────────────────────
-const SHEET_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vRNHy5Xwqc10lKC4DMgI8_4hv-4qbOakyVIF7b9AXAQMpolpPQQNdHkQ1qAHapEvO8M9lYdH7YHOKdI/pub?gid=0&single=true&output=csv";
+const SHEET_GVIZ_URL="https://docs.google.com/spreadsheets/d/13Kl3pQr6nScXES3jX4NbWRBydaFdh8zMg5T6o5dwwL4/gviz/tq?tqx=out:json&gid=0";
 const STORE_SHEET_ETAG="alc_sheet_etag_v1";
 
-function syncClientsFromSheet(){
-  fetch("https://corsproxy.io/?"+encodeURIComponent(SHEET_URL),{cache:"no-cache"})
-    .then(r=>r.text())
-    .then(csv=>{
-      const lines=csv.trim().split("\n").slice(1); // skip header
-      const clients=lines.map(line=>{
-        // Handle quoted fields (names with commas)
-        const parts=line.match(/(".*?"|[^,]+)(?:,|$)/g)||[];
-        const clean=parts.map(p=>p.replace(/,$/,"").replace(/^"|"$/g,"").trim());
-        return{n:clean[0],s:parseInt(clean[1])||0,t:clean[2]||"GR"};
-      }).filter(c=>c.n&&c.s>0);
-      if(clients.length>0){
-        saveClients(clients);
-        // Refresh any open views
-        try{renderClientManager(document.getElementById("cl-srch")?.value||"");}catch(e){}
-        try{renderTkClients(document.getElementById("tk-srch")?.value||"");}catch(e){}
-        try{renderGClients(document.getElementById("g-srch")?.value||"");}catch(e){}
-        try{updateClientCount();}catch(e){}
-try{syncClientsFromSheet();}catch(e){}
-        console.log("Clients synced from Google Sheets: "+clients.length);
+function parseGvizJSON(text){
+  const match=text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?\s*$/);
+  if(!match)throw new Error("Unexpected response format");
+  const data=JSON.parse(match[1]);
+  const rows=data.table.rows||[];
+  return rows.map(row=>{
+    const c=row.c||[];
+    const name=c[0]&&c[0].v?c[0].v.toString().trim():"";
+    const size=c[1]&&c[1].v?parseInt(c[1].v):0;
+    const tier=c[2]&&c[2].v?c[2].v.toString().trim():"GR";
+    return{n:name,s:size,t:tier};
+  }).filter(c=>c.n&&c.s>0);
+}
+
+function applyFetchedClients(clients,sourceLabel){
+  if(!clients||clients.length===0)return false;
+  saveClients(clients);
+  try{renderClientManager(document.getElementById("cl-srch")?.value||"");}catch(e){}
+  try{renderTkClients(document.getElementById("tk-srch")?.value||"");}catch(e){}
+  try{renderGClients(document.getElementById("g-srch")?.value||"");}catch(e){}
+  try{updateClientCount();}catch(e){}
+  console.log("Clients synced from "+sourceLabel+": "+clients.length);
+  return true;
+}
+
+function syncClientsFromSheet(showStatus){
+  const statusEl=document.getElementById("sync-status");
+  if(showStatus&&statusEl){statusEl.textContent="Syncing…";statusEl.style.color="var(--mid)";}
+  fetch(SHEET_GVIZ_URL+"&_="+Date.now(),{cache:"no-cache",mode:"cors",credentials:"omit"})
+    .then(r=>{
+      if(!r.ok)throw new Error("HTTP "+r.status+" "+r.statusText);
+      return r.text();
+    })
+    .then(text=>{
+      let clients;
+      try{
+        clients=parseGvizJSON(text);
+      }catch(parseErr){
+        throw new Error("Parse error: "+parseErr.message+" (got "+text.length+" chars)");
+      }
+      if(!applyFetchedClients(clients,"Google Sheets")){
+        throw new Error("0 valid rows parsed from "+clients.length+" rows found");
+      }
+      if(showStatus&&statusEl){
+        statusEl.textContent="✓ Synced "+clients.length+" clients just now";
+        statusEl.style.color="var(--sage-d)";
       }
     })
-    .catch(e=>console.log("Sheet sync unavailable (offline?): "+e.message));
+    .catch(e=>{
+      const detail=(e&&e.name?e.name+": ":"")+(e&&e.message?e.message:String(e));
+      console.log("Sheet sync failed: "+detail);
+      if(showStatus&&statusEl){
+        statusEl.textContent="✗ "+detail;
+        statusEl.style.color="var(--warn)";
+      }
+    });
 }
+
 function sortedClients(){return getClients().slice().sort((a,b)=>a.n.localeCompare(b.n));}
 function show(id){
   document.querySelectorAll(".pane").forEach(p=>p.classList.remove("active"));
@@ -862,6 +904,16 @@ function tkCalc(){
   const fpe=document.getElementById("tk-fp");if(fpe)fpe.textContent=fp.toFixed(0)+"%";
   const tn=Math.ceil(totalL/tkSz)||0;
   const fne=document.getElementById("tk-fn");if(fne)fne.textContent=totalL>0?`${totalL.toFixed(1)}L total · ${tn}×${tkSz}L tank${tn>1?"s":""} needed`:"No clients selected";
+
+  // Estimated product cost (Setup view only)
+  let cost=0;
+  TPRODS.filter(p=>p.on).forEach(p=>{
+    const val=(area/100)*p.r; // ml or L depending on product
+    const litres=p.id==="water"?val:val/1000;
+    cost+=litres*getLinkedUnitCost(p.id);
+  });
+  const ce=document.getElementById("tk-cost");
+  if(ce)ce.textContent=cost>0?"£"+cost.toFixed(2):"—";
 }
 function tkSetMode(mode){
   tkMode=mode;
@@ -990,6 +1042,13 @@ function gCalc(){
   if(tfe)tfe.textContent=gFeed?tf.toFixed(1)+" kg":"—";if(tse)tse.textContent=gSeed?ts.toFixed(1)+" kg":"—";
   const det=[];if(sel.length)det.push(sel.length+" client"+(sel.length>1?"s":"")+" · "+area.toLocaleString()+"m²");if(gFeed&&fr>0)det.push("Feed: "+fr+"g/m² → "+tf.toFixed(1)+"kg");if(gSeed&&sr>0)det.push("Seed: "+sr+"g/m² → "+ts.toFixed(1)+"kg");
   const de=document.getElementById("g-det");if(de)de.textContent=det.join("  ·  ");
+
+  // Estimated product cost (Setup view only)
+  let gcost=0;
+  if(gFeed&&fr>0)gcost+=tf*getLinkedUnitCost("feed");
+  if(gSeed&&sr>0)gcost+=ts*getLinkedUnitCost("seed");
+  const gce=document.getElementById("g-cost");
+  if(gce)gce.textContent=gcost>0?"£"+gcost.toFixed(2):"—";
 }
 // CLIENTS MANAGER
 let editIdx=null,afTierVal="GR";
@@ -1181,16 +1240,26 @@ try{initPay();payCalc();}catch(e){}
 try{updateClientCount();}catch(e){}
 try{syncClientsFromSheet();}catch(e){}
 
+function getLinkedUnitCost(linkId){
+  const prods=getStockProds();
+  const p=prods.find(x=>x.link===linkId);
+  if(!p||!p.price||!p.containerSize)return 0;
+  return p.price/p.containerSize; // £ per L or kg
+}
+
 // ═══ STOCK TRACKER ═══════════════════════════════════════════════
 const STORE_STOCK_PRODS = "alc_stock_prods_v1";
 const STORE_STOCK_LOG   = "alc_stock_log_v1";
 
 const DEFAULT_STOCK_PRODS = [
-  {id:"sp1",name:"ASLF",containerSize:10,unit:"L",price:0,stock:10,link:"aslf"},
-  {id:"sp2",name:"Marine Green",containerSize:10,unit:"L",price:0,stock:10,link:"marine"},
-  {id:"sp3",name:"Iron",containerSize:10,unit:"L",price:0,stock:10,link:"iron"},
-  {id:"sp4",name:"Wikka",containerSize:1,unit:"L",price:0,stock:1,link:"wikka"},
-  {id:"sp5",name:"Granular Feed",containerSize:20,unit:"kg",price:0,stock:20,link:"feed"},
+  {id:"sp1",name:"ASLF",containerSize:10,unit:"L",price:41.40,stock:10,link:"aslf"},
+  {id:"sp2",name:"Marine Green",containerSize:10,unit:"L",price:168.00,stock:10,link:"marine"},
+  {id:"sp3",name:"Iron",containerSize:10,unit:"L",price:44.40,stock:10,link:"iron"},
+  {id:"sp4",name:"Wikka",containerSize:10,unit:"L",price:322.80,stock:10,link:"wikka"},
+  {id:"sp5",name:"Granular Feed (Evolution Naturell)",containerSize:25,unit:"kg",price:30.00,stock:25,link:"feed"},
+  {id:"sp6",name:"Praxys",containerSize:2,unit:"L",price:99.18,stock:2,link:"selective"},
+  {id:"sp7",name:"Seed",containerSize:20,unit:"kg",price:103.40,stock:20,link:"seed"},
+  {id:"sp8",name:"Shady Seed",containerSize:20,unit:"kg",price:138.00,stock:20,link:""},
 ];
 
 function getStockProds(){
