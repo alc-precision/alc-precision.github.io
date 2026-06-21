@@ -1247,6 +1247,26 @@ function getLinkedUnitCost(linkId){
   return p.price/p.containerSize; // £ per L or kg
 }
 
+function resetStockPrices(){
+  if(!confirm("Reset all product prices to the current price list? Stock levels will NOT be changed."))return;
+  const s=getStockProds();
+  DEFAULT_STOCK_PRODS.forEach(def=>{
+    let existing=null;
+    if(def.link) existing=s.find(p=>p.link===def.link);
+    if(!existing) existing=s.find(p=>p.name===def.name);
+    if(existing){
+      existing.price=def.price;
+      existing.containerSize=def.containerSize;
+      if(!existing.link&&def.link)existing.link=def.link;
+    }else{
+      s.push(Object.assign({},def));
+    }
+  });
+  saveStockProds(s);
+  renderStockProducts();
+  alert("Prices updated.");
+}
+
 // ═══ STOCK TRACKER ═══════════════════════════════════════════════
 const STORE_STOCK_PRODS = "alc_stock_prods_v1";
 const STORE_STOCK_LOG   = "alc_stock_log_v1";
@@ -1266,30 +1286,39 @@ function getStockProds(){
   let s=lsGet(STORE_STOCK_PRODS,null);
   if(!s||!s.length){
     lsSet(STORE_STOCK_PRODS,DEFAULT_STOCK_PRODS);
-    return DEFAULT_STOCK_PRODS;
+    return DEFAULT_STOCK_PRODS.slice();
   }
-  // One-time migration: if prices are missing/zero on the original 5 products,
-  // merge in correct defaults (keeps any manually-edited stock levels)
-  const migrated=lsGet("alc_stock_price_migration_v1",false);
+  // Migration v2: ensure every default product is present with correct price.
+  // Re-run keyed off MIGRATION_KEY so bumping it forces a fresh pass.
+  const MIGRATION_KEY="alc_stock_price_migration_v2";
+  const migrated=lsGet(MIGRATION_KEY,false);
   if(!migrated){
     let changed=false;
     DEFAULT_STOCK_PRODS.forEach(def=>{
-      const existing=s.find(p=>p.name===def.name||p.link===def.link);
-      if(existing&&(!existing.price||existing.price===0)){
-        existing.price=def.price;
-        existing.containerSize=def.containerSize;
-        changed=true;
-      }
-    });
-    // Add any new default products not already present (e.g. Praxys, Seed, Shady Seed)
-    DEFAULT_STOCK_PRODS.forEach(def=>{
-      if(!s.find(p=>p.name===def.name||(def.link&&p.link===def.link))){
-        s.push(def);
+      // Match by exact link first (most reliable), else by name
+      let existing=null;
+      if(def.link) existing=s.find(p=>p.link===def.link);
+      if(!existing) existing=s.find(p=>p.name===def.name);
+      if(existing){
+        if(!existing.price||existing.price===0){
+          existing.price=def.price;
+          changed=true;
+        }
+        if(!existing.containerSize||existing.containerSize===0){
+          existing.containerSize=def.containerSize;
+          changed=true;
+        }
+        if(!existing.link&&def.link){
+          existing.link=def.link;
+          changed=true;
+        }
+      }else{
+        s.push(Object.assign({},def));
         changed=true;
       }
     });
     if(changed)saveStockProds(s);
-    lsSet("alc_stock_price_migration_v1",true);
+    lsSet(MIGRATION_KEY,true);
   }
   return s;
 }
@@ -1560,7 +1589,7 @@ function delStockProd(i){
 <!-- STOCK TRACKER -->
 <div class="pane" id="pane-stock">
   <div class="ph">
-    <div class="ph-row"><h2>Stock Tracker</h2><button class="hbtn" onclick="show('home')">⌂ Home</button></div>
+    <div class="ph-row"><h2>Stock Tracker</h2><div style="display:flex;gap:6px;"><button class="hbtn" onclick="resetStockPrices()">↻ Prices</button><button class="hbtn" onclick="show('home')">⌂ Home</button></div></div>
     <p>Product levels · usage log · monthly &amp; yearly totals</p>
   </div>
   <div class="pb">
