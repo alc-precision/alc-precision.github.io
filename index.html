@@ -1263,10 +1263,35 @@ const DEFAULT_STOCK_PRODS = [
 ];
 
 function getStockProds(){
-  const s=lsGet(STORE_STOCK_PRODS,null);
-  if(s&&s.length)return s;
-  lsSet(STORE_STOCK_PRODS,DEFAULT_STOCK_PRODS);
-  return DEFAULT_STOCK_PRODS;
+  let s=lsGet(STORE_STOCK_PRODS,null);
+  if(!s||!s.length){
+    lsSet(STORE_STOCK_PRODS,DEFAULT_STOCK_PRODS);
+    return DEFAULT_STOCK_PRODS;
+  }
+  // One-time migration: if prices are missing/zero on the original 5 products,
+  // merge in correct defaults (keeps any manually-edited stock levels)
+  const migrated=lsGet("alc_stock_price_migration_v1",false);
+  if(!migrated){
+    let changed=false;
+    DEFAULT_STOCK_PRODS.forEach(def=>{
+      const existing=s.find(p=>p.name===def.name||p.link===def.link);
+      if(existing&&(!existing.price||existing.price===0)){
+        existing.price=def.price;
+        existing.containerSize=def.containerSize;
+        changed=true;
+      }
+    });
+    // Add any new default products not already present (e.g. Praxys, Seed, Shady Seed)
+    DEFAULT_STOCK_PRODS.forEach(def=>{
+      if(!s.find(p=>p.name===def.name||(def.link&&p.link===def.link))){
+        s.push(def);
+        changed=true;
+      }
+    });
+    if(changed)saveStockProds(s);
+    lsSet("alc_stock_price_migration_v1",true);
+  }
+  return s;
 }
 function saveStockProds(p){lsSet(STORE_STOCK_PRODS,p);}
 function getStockLog(){return lsGet(STORE_STOCK_LOG,[]);}
